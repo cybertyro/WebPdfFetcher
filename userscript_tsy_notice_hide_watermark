@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         电子公告一键显示隐藏伪元素水印
+// @name         只在页面最外层body插入唯一水印按钮
 // @namespace    https://github.com/your-namespace
-// @version      1.0
-// @description  控制 #page_height 伪元素水印的显示或隐藏
+// @version      4.0
+// @description  不管页面怎么嵌套、动态生成、刷脚本，只保留body下唯一水印控制按钮
 // @match        *://*/*
 // @grant        none
 // ==/UserScript==
@@ -10,8 +10,87 @@
 (function() {
     'use strict';
 
-    // 创建按钮
+    // 只允许插入body下，不准嵌套内容区插入
+    if (document.body.parentElement.tagName !== "HTML") return;
+    // 一些特殊情况下body外层可能不是html，进一步防御
+    if (!document.body || document.body.closest('html') !== document.documentElement) return;
+
+    // 保证一个页面只有一个按钮：每次执行前全部移除
+    Array.from(document.querySelectorAll('#watermark-toggle-btn-unique, .watermark-print-hide-btn')).forEach(el=>el.remove());
+
+    // 只允许一个按钮（防止并发等造多个）
+    if (window.__hasWatermarkBtn__) return;
+    window.__hasWatermarkBtn__ = true;
+
+    const BUTTON_ID = "watermark-toggle-btn-unique";
+    const BUTTON_CLASS = "watermark-print-hide-btn";
+
+    // 打印时隐藏按钮
+    if (!document.getElementById('add_print_hide_btn_style')) {
+        const style = document.createElement('style');
+        style.id = 'add_print_hide_btn_style';
+        style.textContent = `
+@media print {
+    .${BUTTON_CLASS} { display: none !important; }
+}`;
+        document.head.appendChild(style);
+    }
+
+    // 全局样式(伪元素等)
+    const WATERMARK_STYLE_ID = 'hide-all-watermark-style';
+    function injectOrRemoveWatermarkStyle(hide) {
+        let style = document.getElementById(WATERMARK_STYLE_ID);
+        if (hide && !style) {
+            style = document.createElement('style');
+            style.id = WATERMARK_STYLE_ID;
+            style.textContent = `
+@media screen,print {
+    #page_height::after,
+    body::after,
+    html::after
+    { background-image: none !important; content: "" !important; opacity: 0 !important; pointer-events: none !important; }
+    .watermark,
+    .bg-watermark,
+    .water-mark
+    { background-image: none !important; opacity: 0.05 !important; }
+    canvas[id*="watermark"], canvas[class*="watermark"] { opacity: 0!important; pointer-events: none!important; }
+}`;
+            document.head.appendChild(style);
+        } else if (!hide && style) {
+            style.remove();
+        }
+    }
+
+    // JS 方式去掉各种主内容和四周的水印背景（多区域支持）
+    function hideContextBg() {
+        [
+          document.querySelector('#context'),
+          document.querySelector('#page_height'),
+          document.querySelector('.content_container')
+        ].forEach(ctx=>{
+          if (ctx) {
+              ctx.setAttribute('data-old-bg', ctx.style.backgroundImage || '');
+              ctx.style.backgroundImage = "none";
+          }
+        });
+    }
+    function showContextBg() {
+        [
+          document.querySelector('#context'),
+          document.querySelector('#page_height'),
+          document.querySelector('.content_container')
+        ].forEach(ctx=>{
+          if (ctx && ctx.hasAttribute('data-old-bg')) {
+              ctx.style.backgroundImage = ctx.getAttribute('data-old-bg');
+          }
+        });
+    }
+
+    // 按钮只加在body，不管内容节点咋变
     const btn = document.createElement('button');
+    btn.id = BUTTON_ID;
+    btn.className = BUTTON_CLASS;
+    btn.textContent = "隐藏水印";
     btn.style.position = 'fixed';
     btn.style.bottom = '40px';
     btn.style.right = '30px';
@@ -23,32 +102,29 @@
     btn.style.padding = "8px 14px";
     btn.style.cursor = "pointer";
     btn.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
-    btn.textContent = "隐藏水印";
     document.body.appendChild(btn);
 
-    // 注入隐藏水印的CSS
-    let styleTag = null;
     let hidden = false;
+
+    // 监控变化保证水印一直隐藏
+    const mo = new MutationObserver(() => { if (hidden) hideContextBg(); });
+    mo.observe(document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['style']});
 
     btn.onclick = function() {
         if (!hidden) {
-            if (!styleTag) {
-                styleTag = document.createElement('style');
-                styleTag.textContent = `
-#page_height::after {
-    background-image: none !important;
-}
-                `;
-                document.head.appendChild(styleTag);
-            }
+            injectOrRemoveWatermarkStyle(true);
+            hideContextBg();
             btn.textContent = "显示水印";
         } else {
-            if (styleTag) {
-                styleTag.remove();
-                styleTag = null;
-            }
+            injectOrRemoveWatermarkStyle(false);
+            showContextBg();
             btn.textContent = "隐藏水印";
         }
         hidden = !hidden;
     };
+
+    // 打印前自动隐藏
+    window.addEventListener('beforeprint', () => { injectOrRemoveWatermarkStyle(true); hideContextBg(); });
+    window.addEventListener('afterprint', () => { if (!hidden) { injectOrRemoveWatermarkStyle(false); showContextBg(); } });
+
 })();
