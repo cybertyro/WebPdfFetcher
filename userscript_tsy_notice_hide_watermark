@@ -1,0 +1,54 @@
+// ==UserScript==
+// @name         电子公告一键显示隐藏伪元素水印
+// @namespace    https://github.com/your-namespace
+// @version      1.0
+// @description  控制 #page_height 伪元素水印的显示或隐藏
+// @match        *://*/*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // 创建按钮
+    const btn = document.createElement('button');
+    btn.style.position = 'fixed';
+    btn.style.bottom = '40px';
+    btn.style.right = '30px';
+    btn.style.zIndex = 99999;
+    btn.style.background = "#0aa";
+    btn.style.color = "#fff";
+    btn.style.border = "none";
+    btn.style.borderRadius = "6px";
+    btn.style.padding = "8px 14px";
+    btn.style.cursor = "pointer";
+    btn.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+    btn.textContent = "隐藏水印";
+    document.body.appendChild(btn);
+
+    // 注入隐藏水印的CSS
+    let styleTag = null;
+    let hidden = false;
+
+    btn.onclick = function() {
+        if (!hidden) {
+            if (!styleTag) {
+                styleTag = document.createElement('style');
+                styleTag.textContent = `
+#page_height::after {
+    background-image: none !important;
+}
+                `;
+                document.head.appendChild(styleTag);
+            }
+            btn.textContent = "显示水印";
+        } else {
+            if (styleTag) {
+                styleTag.remove();
+                styleTag = null;
+            }
+            btn.textContent = "隐藏水印";
+        }
+        hidden = !hidden;
+    };
+})();
