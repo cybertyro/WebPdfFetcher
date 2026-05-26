@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         只在页面最外层body插入唯一水印按钮
+// @name         终极唯一水印按钮（仅顶层body）
 // @namespace    https://github.com/your-namespace
-// @version      4.0
-// @description  不管页面怎么嵌套、动态生成、刷脚本，只保留body下唯一水印控制按钮
+// @version      4.1
+// @description  保证只在最顶层页面body插入唯一按钮，反复清理所有遗留
 // @match        *://*/*
 // @grant        none
 // ==/UserScript==
@@ -10,21 +10,17 @@
 (function() {
     'use strict';
 
-    // 只允许插入body下，不准嵌套内容区插入
+    // 只在最顶层window和根body下运行
+    if (window.self !== window.top) return;
     if (document.body.parentElement.tagName !== "HTML") return;
-    // 一些特殊情况下body外层可能不是html，进一步防御
-    if (!document.body || document.body.closest('html') !== document.documentElement) return;
 
-    // 保证一个页面只有一个按钮：每次执行前全部移除
-    Array.from(document.querySelectorAll('#watermark-toggle-btn-unique, .watermark-print-hide-btn')).forEach(el=>el.remove());
-
-    // 只允许一个按钮（防止并发等造多个）
+    // 防止同一页面多次插入或局部刷新
+    Array.from(document.body.querySelectorAll('#watermark-toggle-btn-unique, .watermark-print-hide-btn')).forEach(el => el.remove());
     if (window.__hasWatermarkBtn__) return;
     window.__hasWatermarkBtn__ = true;
 
     const BUTTON_ID = "watermark-toggle-btn-unique";
     const BUTTON_CLASS = "watermark-print-hide-btn";
-
     // 打印时隐藏按钮
     if (!document.getElementById('add_print_hide_btn_style')) {
         const style = document.createElement('style');
@@ -35,8 +31,7 @@
 }`;
         document.head.appendChild(style);
     }
-
-    // 全局样式(伪元素等)
+    // 覆盖水印
     const WATERMARK_STYLE_ID = 'hide-all-watermark-style';
     function injectOrRemoveWatermarkStyle(hide) {
         let style = document.getElementById(WATERMARK_STYLE_ID);
@@ -61,7 +56,7 @@
         }
     }
 
-    // JS 方式去掉各种主内容和四周的水印背景（多区域支持）
+    // 主体和外围水印背景
     function hideContextBg() {
         [
           document.querySelector('#context'),
@@ -85,8 +80,7 @@
           }
         });
     }
-
-    // 按钮只加在body，不管内容节点咋变
+    // 只插body
     const btn = document.createElement('button');
     btn.id = BUTTON_ID;
     btn.className = BUTTON_CLASS;
@@ -105,8 +99,7 @@
     document.body.appendChild(btn);
 
     let hidden = false;
-
-    // 监控变化保证水印一直隐藏
+    // 监控保证水印一直隐藏
     const mo = new MutationObserver(() => { if (hidden) hideContextBg(); });
     mo.observe(document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['style']});
 
@@ -122,8 +115,6 @@
         }
         hidden = !hidden;
     };
-
-    // 打印前自动隐藏
     window.addEventListener('beforeprint', () => { injectOrRemoveWatermarkStyle(true); hideContextBg(); });
     window.addEventListener('afterprint', () => { if (!hidden) { injectOrRemoveWatermarkStyle(false); showContextBg(); } });
 
